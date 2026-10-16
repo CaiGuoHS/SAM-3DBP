@@ -94,8 +94,6 @@ def main():
         num_worker = args.num_worker
     )
     sam = sam_model_registry["vit_b"](checkpoint="ckpts/sam_vit_b_01ec64.pth")
-    # sam = sam_model_registry["vit_b"](checkpoint="ckpts/sam_vit_b_01ec64.pth")
-    # sam = sam_model_registry["vit_b"](checkpoint="ckpt/medsam_vit_b.pth")
 
     img_encoder = ImageEncoderViT(
         depth=12,
@@ -138,7 +136,6 @@ def main():
     mask_decoder.mask_tokens.weight = sam.mask_decoder.mask_tokens.weight
     mask_decoder.transformer.load_state_dict(sam.mask_decoder.transformer.state_dict())
     mask_decoder.output_upscaling.load_state_dict(sam.mask_decoder.output_upscaling.state_dict())
-    # mask_decoder.output_hypernetworks_mlps.load_state_dict(sam.mask_decoder.output_hypernetworks_mlps.state_dict())
     mask_decoder.output_hypernetworks_mlp.load_state_dict(sam.mask_decoder.output_hypernetworks_mlps[0].state_dict())
 
     del sam
@@ -154,8 +151,6 @@ def main():
     mask_decoder.to(device)
     img_encoder.update_embed()
 
-    # encoder_opt = torch.optim.AdamW([i for i in img_encoder.parameters() if i.requires_grad==True], lr=args.lr, weight_decay=0.00001)
-    # encoder_scheduler = torch.optim.lr_scheduler.LinearLR(encoder_opt, start_factor=1.0, end_factor=0.1, total_iters=args.max_epoch)
     decoder_opt = torch.optim.AdamW([i for i in mask_decoder.parameters() if i.requires_grad == True], lr=args.lr, weight_decay=0.00001)
     decoder_scheduler = torch.optim.lr_scheduler.LinearLR(decoder_opt, start_factor=1.0, end_factor=0.1, total_iters=args.max_epoch)
 
@@ -175,7 +170,6 @@ def main():
             logger.info(f"seg: {seg.sum()}, {path}, {img.shape}, {seg.shape}")
 
             with torch.no_grad():
-                # input_batch = F.interpolate(img, scale_factor=4, mode='trilinear').to(device)
                 image_embeddings_d, image_embeddings_h, image_embeddings_w = img_encoder(img.to(device))
 
                 num_fsamples = torch.randint(low=1, high=args.num_fpoints + 1, size=()).item()
@@ -299,19 +293,14 @@ def main():
             with torch.no_grad():
                 loss_summary = []
                 rngf = np.random.default_rng()
-                # rngb = np.random.default_rng()
                 if args.seed >= 0:
-                    # np.random.seed(args.seed)
                     rngf = np.random.default_rng(args.seed)
-                    # rngb = np.random.default_rng(args.seed)
                 for idx, (img, seg, spacing, path, affine) in enumerate(val_data):
                     logger.info(f"seg: {seg.sum()}, {path}, {img.shape}, {seg.shape}")
-                    seg = seg.unsqueeze(0)#.to(device)
+                    seg = seg.unsqueeze(0)
                     seg_img = F.interpolate(seg, size=img.shape[2:], mode='nearest').detach().cpu().numpy()
-                    # img = img.to(device)
 
                     num_fsamples = args.num_fpoints
-                    # num_bsamples = args.num_bpoints
 
                     fp_region = np.squeeze(seg_img)
                     fpoints_sub = np.argwhere(fp_region == 1)
@@ -323,30 +312,11 @@ def main():
                     fpoints_y = fpoints_sub[fsamples][:, -2]
                     fpoints_x = fpoints_sub[fsamples][:, -1]
 
-                    # bp_region = get_bp_region(seg_img, args.gamma)
-                    # bpoints_sub = np.argwhere(bp_region == 1)
-                    # b_expand = bpoints_sub[:, np.newaxis, :]
-                    # f_expand = fpoints_sub[fsamples[:num_fsamples]][np.newaxis, :, :]
-                    # coord_eq = (b_expand == f_expand)
-                    # match_count = coord_eq.sum(axis=2)
-                    # is_overlap = (match_count >= 2).any(axis=1)
-                    # bpoints_sub = bpoints_sub[~is_overlap]
-                    # bpoints_num = len(bpoints_sub)
-                    # if bpoints_num > 0:
-                    #     bsamples = rngb.choice(bpoints_num, min(num_bsamples, bpoints_num), replace=False)
-                    #     bpoints_x = bpoints_sub[bsamples][:, -1]
-                    #     bpoints_y = bpoints_sub[bsamples][:, -2]
-                    #     bpoints_z = bpoints_sub[bsamples][:, -3]
-
                     logger.info((fpoints_x, fpoints_y, fpoints_z))
-                    # logger.info((bpoints_x, bpoints_y, bpoints_z))
 
                     fx = np.array(fpoints_x)
                     fy = np.array(fpoints_y)
                     fz = np.array(fpoints_z)
-                    # bx = np.array(bpoints_x)
-                    # by = np.array(bpoints_y)
-                    # bz = np.array(bpoints_z)
                     bx = np.array([])
                     by = np.array([])
                     bz = np.array([])
@@ -354,7 +324,6 @@ def main():
                     bpoints_coord = (bx, by, bz)
 
                     logger.info((fx * seg.shape[-1] / img.shape[-1], fy * seg.shape[-2] / img.shape[-2], fz * seg.shape[-3] / img.shape[-3]))
-                    # logger.info((bx * seg.shape[-1] / img.shape[-1], by * seg.shape[-2] / img.shape[-2], bz * seg.shape[-3] / img.shape[-3]))
 
                     pred = sliding_window_inference(img, [input_size, input_size, input_size], overlap=0.5, sw_batch_size=1,
                                                     mode="gaussian",
@@ -383,7 +352,7 @@ def main():
             logger_loss.info("Val " + str(np.mean(loss_summary)))
 
             is_best = False
-            if np.mean(loss_summary) < best_loss: # and np.mean(loss_nsd) > best_nsd:
+            if np.mean(loss_summary) < best_loss:
                 best_loss = np.mean(loss_summary)
                 is_best = True
                 logger.info(f"Evolution best: {epoch_num}")
